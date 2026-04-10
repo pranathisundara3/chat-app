@@ -15,8 +15,10 @@ const Chatcontainer = () => {
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (input.trim() === '' || !selectedUser) return null;
-    await sendMessage(selectedUser._id, { text: input.trim() });
-    setInput('');
+    const sent = await sendMessage(selectedUser._id, { text: input.trim() });
+    if (sent) {
+      setInput('');
+    }
   };
 
   // Handle sending an image
@@ -30,8 +32,10 @@ const Chatcontainer = () => {
     const reader = new FileReader();
     reader.onloadend = async () => {
       if (!selectedUser) return;
-      await sendMessage(selectedUser._id, { image: reader.result });
-      e.target.value = "";
+      const sent = await sendMessage(selectedUser._id, { image: reader.result });
+      if (sent) {
+        e.target.value = "";
+      }
     };
 
     reader.readAsDataURL(file);

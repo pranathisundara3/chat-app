@@ -10,8 +10,8 @@ export const ChatProvider = ({ children }) => {
     const [unseenMessages, setUnseenMessages] = useState({});
     const { socket, axios } = useContext(AuthContext);
 
-    //function  to get all users for sidebar
-    const getUsers = async () => {
+    // function to get all users for sidebar
+    const getUsers = useCallback(async () => {
         try {
             const { data } = await axios.get('/api/message/users');
             if (data.success) {
@@ -21,9 +21,10 @@ export const ChatProvider = ({ children }) => {
         } catch (error) {
             toast.error(error.message);
         }
-    };
-// function to get messages for selected user
-    const getMessages = async (userId) => {
+    }, [axios]);
+
+    // function to get messages for selected user
+    const getMessages = useCallback(async (userId) => {
         try {
             const { data } = await axios.get(`/api/message/${userId}`);
             if (data.success) {
@@ -32,21 +33,23 @@ export const ChatProvider = ({ children }) => {
         } catch (error) {
             toast.error(error.message);
         }
-    };
-    // function to send messages to selected user
+    }, [axios]);
 
-    const sendMessage = async (userId, message) => {
+    // function to send messages to selected user
+    const sendMessage = useCallback(async (userId, message) => {
         try {
             const { data } = await axios.post(`/api/message/send/${userId}`, message);
             if (data.success) {
                 setMessages((prevMessages) => [...prevMessages, data.message]);
-            } else {
-                toast.error(data.message);
+                return true;
             }
+            toast.error(data.message);
+            return false;
         } catch (error) {
             toast.error(error.message);
+            return false;
         }
-    };
+    }, [axios]);
 
     const subscribeToMessages = useCallback(() => {
         if (!socket) return;
