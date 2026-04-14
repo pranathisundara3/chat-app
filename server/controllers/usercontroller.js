@@ -7,7 +7,9 @@ import cloudinary from "../lib/cloudinary.js";
 import crypto from "crypto";
 import { OAuth2Client } from "google-auth-library";
 
-const googleClient = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const resolveGoogleClientId = () => {
+    return process.env.GOOGLE_CLIENT_ID || process.env.VITE_GOOGLE_CLIENT_ID || "";
+};
 
 const sanitizeUser = (userDoc) => {
     const userData = userDoc.toObject ? userDoc.toObject() : userDoc;
@@ -231,9 +233,13 @@ export const searchUser = async (req, res) => {
 // controller to login or register user with google
 export const googleLogin = async (req, res) => {
     try {
-        if (!process.env.GOOGLE_CLIENT_ID) {
+        const googleClientId = resolveGoogleClientId();
+
+        if (!googleClientId) {
             return res.json({success:false ,message:"Google login is not configured on server"});
         }
+
+        const googleClient = new OAuth2Client(googleClientId);
 
         const { credential, profile } = req.body;
 
@@ -243,7 +249,7 @@ export const googleLogin = async (req, res) => {
 
         const ticket = await googleClient.verifyIdToken({
             idToken: credential,
-            audience: process.env.GOOGLE_CLIENT_ID,
+            audience: googleClientId,
         });
 
         const payload = ticket.getPayload();
