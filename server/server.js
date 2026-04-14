@@ -46,6 +46,16 @@ await connectDb();
 if(process.env.NODE_ENV !== 'production'){
 const PORT = process.env.PORT || 5000;
 
+  server.on('error', (error) => {
+    if (error.code === 'EADDRINUSE') {
+      console.error(`Port ${PORT} is already in use. Stop the old server process or change PORT in .env.`);
+      process.exit(1);
+    }
+
+    console.error('Server startup error:', error);
+    process.exit(1);
+  });
+
   server.listen(PORT, () => console.log("Server is running on port :" + PORT));
 
 }
