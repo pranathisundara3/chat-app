@@ -5,6 +5,7 @@ import http from 'http';
 import {connectDb} from './lib/db.js';
 import userRouter from './routes/userRoutes.js';
 import messageRouter from './routes/messageRoutes.js';
+import chatRequestRouter from './routes/chatRequestRoutes.js';
 import { Server } from "socket.io";
 
 // create express app and http server
@@ -41,6 +42,7 @@ app.use(cors());
 app.use("/api/status", (req, res) => res.send("server is live"));
 app.use("/api/auth", userRouter);
 app.use("/api/message", messageRouter);
+app.use("/api/chat-request", chatRequestRouter);
 //connect to database and start server
 await connectDb();
 if(process.env.NODE_ENV !== 'production'){

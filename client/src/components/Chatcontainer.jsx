@@ -6,15 +6,29 @@ import { ChatContext } from '../../context/ChatContext.jsx';
 import toast from 'react-hot-toast';
 
 const Chatcontainer = () => {
-  const { messages, selectedUser, setSelectedUser, sendMessage, getMessages } = useContext(ChatContext);
+  const {
+    messages,
+    setMessages,
+    selectedUser,
+    setSelectedUser,
+    sendMessage,
+    getMessages,
+    sendChatRequest,
+    acceptRequest,
+    rejectRequest,
+    requestActionLoading,
+    messagesLoading,
+    getUsers,
+  } = useContext(ChatContext);
   const { authUser, onlineUsers } = useContext(AuthContext);
 
   const scrollEnd = useRef();
   const [input, setInput] = useState('');
+  const canChat = selectedUser?.chatStatus === 'accepted';
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
-    if (input.trim() === '' || !selectedUser) return null;
+    if (!canChat || input.trim() === '' || !selectedUser) return null;
     const sent = await sendMessage(selectedUser._id, { text: input.trim() });
     if (sent) {
       setInput('');
@@ -23,6 +37,8 @@ const Chatcontainer = () => {
 
   // Handle sending an image
   const handleSendImage = async (e) => {
+    if (!canChat) return;
+
     const file = e.target.files[0];
     if (!file || !file.type.startsWith('image/')) {
       toast.error('Select an image file');
@@ -42,10 +58,16 @@ const Chatcontainer = () => {
   };
 
   useEffect(() => {
-    if (selectedUser) {
-      getMessages(selectedUser._id);
+    if (!selectedUser || selectedUser.chatStatus !== 'accepted') {
+      return;
     }
-  }, [selectedUser, getMessages]);
+
+    const loadMessages = async () => {
+      await getMessages(selectedUser._id);
+    };
+
+    loadMessages();
+  }, [selectedUser, getMessages, setMessages]);
 
 
   useEffect(() => {
@@ -53,6 +75,76 @@ const Chatcontainer = () => {
       scrollEnd.current.scrollIntoView({behavior:"smooth" })
     }
   },[messages])
+
+  const renderChatStatusBanner = () => {
+    if (!selectedUser || canChat) return null;
+
+    if (selectedUser.chatStatus === 'pending-sent') {
+      return (
+        <div className='m-4 rounded-lg border border-amber-400/40 bg-amber-500/10 px-4 py-3 text-sm text-amber-200'>
+          Chat request sent. You can message after it is accepted.
+        </div>
+      );
+    }
+
+    if (selectedUser.chatStatus === 'pending-received') {
+      return (
+        <div className='m-4 rounded-lg border border-violet-400/40 bg-violet-500/10 px-4 py-3 text-sm text-violet-100'>
+          <p className='mb-2'>This user sent you a chat request.</p>
+          <div className='flex gap-2'>
+            <button
+              onClick={async () => {
+                if (!selectedUser.requestId) return;
+                const accepted = await acceptRequest(selectedUser.requestId);
+                if (accepted) {
+                  setSelectedUser((prev) => prev ? { ...prev, chatStatus: 'accepted' } : prev);
+                  await getUsers();
+                }
+              }}
+              disabled={requestActionLoading}
+              className='rounded-md bg-emerald-500 px-3 py-1 text-xs text-white disabled:opacity-60'
+            >
+              Accept
+            </button>
+            <button
+              onClick={async () => {
+                if (!selectedUser.requestId) return;
+                const rejected = await rejectRequest(selectedUser.requestId);
+                if (rejected) {
+                  setSelectedUser((prev) => prev ? { ...prev, chatStatus: 'none' } : prev);
+                  await getUsers();
+                }
+              }}
+              disabled={requestActionLoading}
+              className='rounded-md bg-rose-500 px-3 py-1 text-xs text-white disabled:opacity-60'
+            >
+              Reject
+            </button>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className='m-4 rounded-lg border border-indigo-400/40 bg-indigo-500/10 px-4 py-3 text-sm text-indigo-100'>
+        Search and send a request first. Chat becomes available once accepted.
+        <button
+          onClick={async () => {
+            const sent = await sendChatRequest(selectedUser._id);
+            if (sent) {
+              setSelectedUser((prev) => prev ? { ...prev, chatStatus: 'pending-sent' } : prev);
+              await getUsers();
+            }
+          }}
+          disabled={requestActionLoading}
+          className='ml-3 rounded-md bg-violet-500 px-3 py-1 text-xs text-white disabled:opacity-60'
+        >
+          Send Request
+        </button>
+      </div>
+    );
+  };
+
   return selectedUser ? (
     <div className='h-full overflow-scroll relative backdrop-blur-lg'>
       {/* Chat header */}
@@ -62,9 +154,19 @@ const Chatcontainer = () => {
           {selectedUser.fullName}
           {onlineUsers.includes(selectedUser._id) && <span className="w-2 h-2 rounded-full bg-green-500"></span>}
         </p>
-        <img onClick={() => setSelectedUser(null)} src={assets.arrow_icon} alt="" className="md:hidden max-w-7" />
+        <img
+          onClick={() => {
+            setSelectedUser(null);
+            setMessages([]);
+          }}
+          src={assets.arrow_icon}
+          alt=""
+          className="md:hidden max-w-7"
+        />
         <img src={assets.help_icon} alt="" className="max-md:hidden max-w-5" />
       </div>
+      {messagesLoading && <p className='px-4 py-3 text-xs text-violet-200'>Loading conversation...</p>}
+      {renderChatStatusBanner()}
       {/* Chat messages will go here */}
       <div className='flex flex-col h-[calc(100%-120px)] overflow-y-scroll p-3 pb-6 '>
         {messages.map((message, index) => (
@@ -90,15 +192,16 @@ const Chatcontainer = () => {
         <div className='flex-1 flex items-center bg-gray-100/12 px-3 rounded-lg'>
           <input onChange={(e)=>setInput(e.target.value)} value={input} onKeyDown={(e)=>e.key === 'Enter' ? handleSendMessage(e) : null} type="text"
             placeholder="send a message"
-            className='flex-1 text-sm px-3 py-2 rounded-lg outline-none text-white placeholder-gray-400 resize-none'
+            disabled={!canChat}
+            className='flex-1 text-sm px-3 py-2 rounded-lg outline-none text-white placeholder-gray-400 resize-none disabled:opacity-60'
           />
 
-          <input onChange={handleSendImage} type="file" id='image' accept='image/png, image/jpeg' hidden />
+          <input onChange={handleSendImage} type="file" id='image' accept='image/png, image/jpeg' hidden disabled={!canChat} />
           <label htmlFor="image">
-            <img src={assets.gallery_icon} alt="upload" className="w-5 mr-2 cursor-pointer" />
+            <img src={assets.gallery_icon} alt="upload" className={`w-5 mr-2 ${canChat ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'}`} />
           </label>
         </div>
-        <img onClick={handleSendMessage} src={assets.send_button} alt="" className="w-7 cursor-pointer" />
+        <img onClick={canChat ? handleSendMessage : undefined} src={assets.send_button} alt="" className={`w-7 ${canChat ? 'cursor-pointer' : 'opacity-40 cursor-not-allowed'}`} />
       </div>
     </div>
   ) : null;

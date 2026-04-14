@@ -1,42 +1,88 @@
-  
 import Message from "../models/message.js";
 import User from "../models/user.js";
 import cloudinary from "../lib/cloudinary.js";
 import { io, userSocketMap } from "../server.js";
+import { canUsersChat } from "../lib/chatAccess.js";
 
-// get all users except the logged in user
-export const getUsersForSidebar = async (req, res) => {
+// get sidebar users only from existing chat history
+export const getChatUsers = async (req, res) => {
     try {
         const userId = req.user._id;
-        const filteredUsers = await User.find({ _id: { $ne: userId } }).select("-password");
 
-        const unseenMessages = {};
+        const relatedMessages = await Message.find({
+            $or: [{ senderId: userId }, { receiverId: userId }],
+        })
+            .sort({ createdAt: -1 })
+            .select("senderId receiverId")
+            .lean();
 
-        const promises = filteredUsers.map(async (user) => {
-            const messages = await Message.find({
-                senderId: user._id,
-                receiverId: userId,
-                seen: false,
-            });
+        const uniqueUserIds = [];
+        const seenUserIds = new Set();
+        const userIdString = userId.toString();
 
-            if (messages.length > 0) {
-                unseenMessages[user._id] = messages.length;
+        relatedMessages.forEach((messageDoc) => {
+            const senderId = messageDoc.senderId.toString();
+            const receiverId = messageDoc.receiverId.toString();
+            const otherUserId = senderId === userIdString ? receiverId : senderId;
+
+            if (!seenUserIds.has(otherUserId)) {
+                seenUserIds.add(otherUserId);
+                uniqueUserIds.push(otherUserId);
             }
         });
 
-        await Promise.all(promises);
-        res.json({ success: true, users: filteredUsers, unseenMessages });
+        if (!uniqueUserIds.length) {
+            return res.json({ success: true, users: [], unseenMessages: {} });
+        }
+
+        const users = await User.find({ _id: { $in: uniqueUserIds } })
+            .select("-password")
+            .lean();
+
+        const usersMap = new Map(users.map((user) => [user._id.toString(), user]));
+        const orderedUsers = uniqueUserIds
+            .map((id) => usersMap.get(id))
+            .filter(Boolean);
+
+        const unseenMessages = {};
+        const unseenMessageRows = await Message.find({
+            senderId: { $in: uniqueUserIds },
+            receiverId: userId,
+            seen: false,
+        })
+            .select("senderId")
+            .lean();
+
+        unseenMessageRows.forEach((messageDoc) => {
+            const senderId = messageDoc.senderId.toString();
+            unseenMessages[senderId] = (unseenMessages[senderId] || 0) + 1;
+        });
+
+        res.json({ success: true, users: orderedUsers, unseenMessages });
     } catch (error) {
         console.log(error.message);
         res.json({ success: false, message: error.message });
     }
 };
 
+// alias to keep compatibility with existing route import
+export const getUsersForSidebar = getChatUsers;
+
 // get all messages for selected user
 export const getMessages = async (req, res) => {
     try {
         const { id: selectedUserId } = req.params;
         const myId = req.user._id;
+
+        const isAllowed = await canUsersChat(myId, selectedUserId);
+        if (!isAllowed) {
+            return res.json({
+                success: false,
+                canChat: false,
+                messages: [],
+                message: "Chat request is not accepted yet",
+            });
+        }
 
         const messages = await Message.find({
             $or: [
@@ -50,7 +96,7 @@ export const getMessages = async (req, res) => {
             { seen: true }
         );
 
-        res.json({ success: true, messages });
+        res.json({ success: true, canChat: true, messages });
     } catch (error) {
         console.log(error.message);
         res.json({ success: false, message: error.message });
@@ -69,32 +115,43 @@ export const markMessageAsSeen = async (req, res) => {
     }
 };
 
-//send message to selected user
+// send message to selected user
 export const sendMessage = async (req, res) => {
     try {
         const { text, image } = req.body;
         const receiverId = req.params.id;
         const senderId = req.user._id;
+
+        if (!text && !image) {
+            return res.json({ success: false, message: "Message text or image is required" });
+        }
+
+        const isAllowed = await canUsersChat(senderId, receiverId);
+        if (!isAllowed) {
+            return res.json({ success: false, message: "Chat request is not accepted yet" });
+        }
+
         let imageUrl;
-        if(image){
-const uploadResponse = await cloudinary.uploader.upload(image);
-imageUrl=uploadResponse.secure_url;
-         }
-         const newMessage = await Message.create({
+        if (image) {
+            const uploadResponse = await cloudinary.uploader.upload(image);
+            imageUrl = uploadResponse.secure_url;
+        }
+
+        const newMessage = await Message.create({
             senderId,
-            receiverId: receiverId,
+            receiverId,
             text,
-            image: imageUrl
+            image: imageUrl,
         });
-        //emit the new message to receiver socket
+
         const receiverSocketId = userSocketMap[receiverId];
         if (receiverSocketId) {
             io.to(receiverSocketId).emit("newMessage", newMessage);
         }
-        res.json({ success: true, message: newMessage });
 
+        res.json({ success: true, message: newMessage });
     } catch (error) {
         console.log(error.message);
         res.json({ success: false, message: error.message });
-    } 
-}
+    }
+};
