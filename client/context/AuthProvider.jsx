@@ -27,20 +27,44 @@ export const AuthProvider = ({ children }) => {
         });
     }, [socket]);
 
-    const login = async (state, credentials) => {
+    const applyAuthSession = (data) => {
+        setAuthUser(data.userData);
+        connectSocket(data.userData);
+        setToken(data.token);
+        localStorage.setItem('token', data.token);
+    };
+
+    const login = async (credentials) => {
         try {
-            const { data } = await axios.post(`/api/auth/${state}`, credentials);
+            const { data } = await axios.post('/api/auth/login', credentials);
             if (data.success) {
-                setAuthUser(data.userData);
-                connectSocket(data.userData);
-                setToken(data.token);
-                localStorage.setItem('token', data.token);
+                applyAuthSession(data);
                 toast.success(data.message);
+                return true;
             } else {
                 toast.error(data.message);
+                return false;
             }
         } catch (error) {
             toast.error(error.message);
+            return false;
+        }
+    };
+
+    const loginWithGoogle = async (credential, profile = {}) => {
+        try {
+            const { data } = await axios.post('/api/auth/google', { credential, profile });
+            if (data.success) {
+                applyAuthSession(data);
+                toast.success(data.message);
+                return true;
+            }
+
+            toast.error(data.message);
+            return false;
+        } catch (error) {
+            toast.error(error.message);
+            return false;
         }
     };
 
@@ -97,6 +121,7 @@ export const AuthProvider = ({ children }) => {
         socket,
         setSocket,
         login,
+        loginWithGoogle,
         logout,
         updateProfile,
     };

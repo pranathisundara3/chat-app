@@ -5,16 +5,22 @@ import App from './App.jsx'
 import {BrowserRouter} from 'react-router-dom'
 import { AuthProvider } from '../context/AuthProvider.jsx';
 import { ChatProvider } from '../context/ChatProvider.jsx';
+import { GoogleOAuthProvider } from '@react-oauth/google';
+
+const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+const appTree = (
+    <BrowserRouter>
+        <AuthProvider>
+            <ChatProvider>
+                <App />
+            </ChatProvider>
+        </AuthProvider>
+    </BrowserRouter>
+);
     
 createRoot(document.getElementById('root')).render(
-
-    <BrowserRouter>
-    <AuthProvider>
-      <ChatProvider>
-         <App />
-        </ChatProvider>
-     
-    </AuthProvider>
-    </BrowserRouter>
-
+    googleClientId
+        ? <GoogleOAuthProvider clientId={googleClientId}>{appTree}</GoogleOAuthProvider>
+        : appTree
 )
