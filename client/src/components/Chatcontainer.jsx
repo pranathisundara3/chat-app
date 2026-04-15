@@ -5,6 +5,13 @@ import { AuthContext } from '../../context/AuthContext.jsx';
 import { ChatContext } from '../../context/ChatContext.jsx';
 import toast from 'react-hot-toast';
 
+const toIdString = (value) => {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'object' && value._id) return String(value._id);
+  return String(value);
+};
+
 const Chatcontainer = () => {
   const {
     messages,
@@ -25,6 +32,9 @@ const Chatcontainer = () => {
   const scrollEnd = useRef();
   const [input, setInput] = useState('');
   const canChat = selectedUser?.chatStatus === 'accepted';
+  const authUserId = toIdString(authUser?._id);
+  const selectedUserId = selectedUser?._id;
+  const selectedUserStatus = selectedUser?.chatStatus;
 
   const handleSendMessage = async (e) => {
     e.preventDefault();
@@ -58,16 +68,16 @@ const Chatcontainer = () => {
   };
 
   useEffect(() => {
-    if (!selectedUser || selectedUser.chatStatus !== 'accepted') {
+    if (!selectedUserId || selectedUserStatus !== 'accepted') {
       return;
     }
 
     const loadMessages = async () => {
-      await getMessages(selectedUser._id);
+      await getMessages(selectedUserId);
     };
 
     loadMessages();
-  }, [selectedUser, getMessages, setMessages]);
+  }, [selectedUserId, selectedUserStatus, getMessages]);
 
 
   useEffect(() => {
@@ -146,7 +156,7 @@ const Chatcontainer = () => {
   };
 
   return selectedUser ? (
-    <div className='h-full overflow-scroll relative backdrop-blur-lg'>
+    <div className='h-full flex flex-col backdrop-blur-lg'>
       {/* Chat header */}
       <div className='flex items-center gap-3 py-3 mx-4 border-b border-stone-500'>
         <img src={selectedUser.profilePic || assets.avatar_icon} alt="" className="w-8 rounded-full" />
@@ -165,30 +175,45 @@ const Chatcontainer = () => {
         />
         <img src={assets.help_icon} alt="" className="max-md:hidden max-w-5" />
       </div>
-      {messagesLoading && <p className='px-4 py-3 text-xs text-violet-200'>Loading conversation...</p>}
+      {messagesLoading && messages.length === 0 && <p className='px-4 py-3 text-xs text-violet-200'>Loading conversation...</p>}
       {renderChatStatusBanner()}
       {/* Chat messages will go here */}
-      <div className='flex flex-col h-[calc(100%-120px)] overflow-y-scroll p-3 pb-6 '>
-        {messages.map((message, index) => (
-          <div key={index} className={`flex items-end gap-2 justify-end ${message.senderId !== authUser._id ? 'flex-row-reverse' : ''}`}>
-            {message.image ? (
-              <img src={message.image} alt="" className='max-w-[230px] border border-gray-700 rounded-lg overflow-hidden mb-8' />
-            ) : (
-              <p className={`p-2 max-w-[200px] md:text-sm font-light rounded-lg mb-8 break-all ${message.senderId === authUser._id ? 'bg-violet-500/30 text-white rounded-br-none' : 'bg-white/30 text-black rounded-bl-none'}`}>
-                {message.text}
-              </p>
-            )}
-              <div className="text-center text-xs">
-                <img src={message.senderId === authUser._id ? authUser?.profilePic || assets.avatar_icon : selectedUser?.profilePic || assets.avatar_icon} alt="" className='w-7 rounded-full' />
-                <p className='text-gray-500'>{formatMessageTime(message.createdAt)}</p>
-            </div>
+      <div className='flex-1 overflow-y-auto p-3 pb-6'>
+        {messages.map((message, index) => {
+          const senderId = toIdString(message.senderId);
+          const isMyMessage = senderId === authUserId;
+          const messageKey = message._id || `${message.createdAt || 'msg'}-${index}`;
 
-          </div>
-        ))}
+          return (
+            <div key={messageKey} className={`mb-4 flex items-end gap-2 ${isMyMessage ? 'justify-end' : 'justify-start'}`}>
+              {!isMyMessage && (
+                <div className="text-center text-xs text-gray-400">
+                  <img src={selectedUser?.profilePic || assets.avatar_icon} alt="" className='w-7 rounded-full' />
+                  <p>{formatMessageTime(message.createdAt)}</p>
+                </div>
+              )}
+
+              {message.image ? (
+                <img src={message.image} alt="" className='max-w-[230px] border border-gray-700 rounded-lg overflow-hidden' />
+              ) : (
+                <p className={`p-2 max-w-[240px] md:text-sm font-light rounded-lg break-words ${isMyMessage ? 'bg-violet-500/30 text-white rounded-br-none' : 'bg-white/20 text-white rounded-bl-none'}`}>
+                  {message.text}
+                </p>
+              )}
+
+              {isMyMessage && (
+                <div className="text-center text-xs text-gray-400">
+                  <img src={authUser?.profilePic || assets.avatar_icon} alt="" className='w-7 rounded-full' />
+                  <p>{formatMessageTime(message.createdAt)}</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
         <div ref={scrollEnd}></div>
       </div>
       {/*-----bottom area-----------*/}
-      <div className='absolute bottom-0 left-0 right-0 flex items-center gap-3 p-3'>
+      <div className='flex items-center gap-3 border-t border-stone-600/60 p-3'>
         <div className='flex-1 flex items-center bg-gray-100/12 px-3 rounded-lg'>
           <input onChange={(e)=>setInput(e.target.value)} value={input} onKeyDown={(e)=>e.key === 'Enter' ? handleSendMessage(e) : null} type="text"
             placeholder="send a message"

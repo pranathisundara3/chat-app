@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useContext } from "react";
+import { useEffect, useMemo, useState, useContext, useRef } from "react";
 import assets from '../assets/assets';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from "../../context/AuthContext.jsx";
@@ -15,7 +15,6 @@ const Sidebar = () => {
     clearSearchResults,
     searchResults,
     incomingRequests,
-    outgoingRequests,
     sendChatRequest,
     acceptRequest,
     rejectRequest,
@@ -25,8 +24,11 @@ const Sidebar = () => {
   const { logout, onlineUsers } = useContext(AuthContext);
 
   const [input, setInput] = useState("");
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const menuRef = useRef(null);
 
   const navigate = useNavigate();
+  const pendingRequestCount = incomingRequests.length;
 
   const filteredHistoryUsers = useMemo(() => {
     const trimmed = input.trim().toLowerCase();
@@ -44,6 +46,17 @@ const Sidebar = () => {
   useEffect(() => {
     getUsers();
   }, [getUsers]);
+
+  useEffect(() => {
+    const handleOutsideClick = (event) => {
+      if (menuRef.current && !menuRef.current.contains(event.target)) {
+        setIsMenuOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleOutsideClick);
+    return () => document.removeEventListener('mousedown', handleOutsideClick);
+  }, []);
 
   useEffect(() => {
     if (!input.trim()) {
@@ -130,18 +143,65 @@ const Sidebar = () => {
       <div className='pb-5'>
         <div className='flex justify-between items-center'>
           <img src={assets.logo} alt="logo" className='max-w-40' />
-        
-        <div className="relative py-2 group">
-          <img src={assets.menu_icon} alt="Menu" className='max-h-5 cursor-pointer' />
-<div className='absolute top-full right-0 z-20 w-32 p-5 rounded-md bg-[#282142] border border-gray-600 text-gray-100 hidden group-hover:block'>
- 
 
-  <p  onClick={() => navigate('/profile')} className='cursor-pointer text-sm'>Edit Profile</p>
-  <hr className="my-2 border-t border-gray-500" />
-  <p onClick={() => logout()} className='cursor-pointer text-sm'>Logout</p>
+          <div className="relative py-2" ref={menuRef}>
+            <button
+              type='button'
+              onClick={() => setIsMenuOpen((prev) => !prev)}
+              className='relative rounded-md p-1 transition hover:bg-white/10'
+            >
+              <img src={assets.menu_icon} alt="Menu" className='max-h-5 cursor-pointer' />
+              {pendingRequestCount > 0 && (
+                <span className='absolute -right-1 -top-1 min-w-5 rounded-full bg-rose-500 px-1 text-[10px] font-semibold text-white'>
+                  {pendingRequestCount > 99 ? '99+' : pendingRequestCount}
+                </span>
+              )}
+            </button>
 
-</div>
-</div>
+            <div
+              className={`absolute top-full right-0 z-20 mt-2 w-44 rounded-xl border border-violet-400/25 bg-[#1c1431] p-2 text-gray-100 shadow-[0_18px_40px_rgba(0,0,0,0.45)] transition-all duration-200 ${isMenuOpen ? 'pointer-events-auto translate-y-0 opacity-100' : 'pointer-events-none -translate-y-2 opacity-0'}`}
+            >
+              <button
+                type='button'
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  navigate('/profile');
+                }}
+                className='flex w-full items-center rounded-lg px-3 py-2 text-left text-sm transition-colors duration-200 hover:bg-violet-500/20'
+              >
+                Profile
+              </button>
+
+              <button
+                type='button'
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  navigate('/requests');
+                }}
+                className='mt-1 flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm transition-colors duration-200 hover:bg-violet-500/20'
+              >
+                <span>📩 Requests</span>
+                {pendingRequestCount > 0 && (
+                  <span className='ml-2 min-w-5 rounded-full bg-rose-500 px-1 text-center text-[10px] font-semibold text-white'>
+                    {pendingRequestCount > 99 ? '99+' : pendingRequestCount}
+                  </span>
+                )}
+              </button>
+
+              <div className='my-2 border-t border-violet-400/20' />
+
+              <button
+                type='button'
+                onClick={() => {
+                  setIsMenuOpen(false);
+                  logout();
+                }}
+                className='flex w-full items-center rounded-lg px-3 py-2 text-left text-sm text-rose-200 transition-colors duration-200 hover:bg-rose-500/20'
+              >
+                Logout
+              </button>
+            </div>
+          </div>
         </div>
         <div className='bg-[#282142] rounded-full flex items-center gap-2 mt-5 px-4 py-3'>
           <img src={assets.search_icon} alt="Search" className='w-3' />
@@ -211,68 +271,15 @@ const Sidebar = () => {
             )}
           </div>
 
-          <div className='space-y-3'>
-            <div>
-              <p className='text-xs text-violet-200 uppercase tracking-wider mb-2'>Incoming Requests</p>
-              {incomingRequests.length ? incomingRequests.map((requestItem) => (
-                <div key={requestItem._id} className='flex items-center justify-between gap-2 p-2 rounded bg-[#221a3a] mb-2'>
-                  <div className='flex items-center gap-2'>
-                    <img
-                      src={requestItem.senderId?.profilePic || assets.avatar_icon}
-                      alt=''
-                      className='w-8 h-8 rounded-full'
-                    />
-                    <div>
-                      <p className='text-sm'>{requestItem.senderId?.fullName || 'Unknown'}</p>
-                      <p className='text-[11px] text-violet-200/70'>@{requestItem.senderId?.username || 'user'}</p>
-                    </div>
-                  </div>
-                  <div className='flex gap-2'>
-                    <button
-                      onClick={async () => {
-                        await acceptRequest(requestItem._id);
-                        await getUsers();
-                      }}
-                      disabled={requestActionLoading}
-                      className='text-xs px-2 py-1 rounded bg-emerald-500/80 text-white disabled:opacity-60'
-                    >
-                      Accept
-                    </button>
-                    <button
-                      onClick={async () => {
-                        await rejectRequest(requestItem._id);
-                        await getUsers();
-                      }}
-                      disabled={requestActionLoading}
-                      className='text-xs px-2 py-1 rounded bg-rose-500/80 text-white disabled:opacity-60'
-                    >
-                      Reject
-                    </button>
-                  </div>
-                </div>
-              )) : <p className='text-xs text-gray-300'>No incoming requests.</p>}
-            </div>
-
-            <div>
-              <p className='text-xs text-violet-200 uppercase tracking-wider mb-2'>Outgoing Requests</p>
-              {outgoingRequests.length ? outgoingRequests.map((requestItem) => (
-                <div key={requestItem._id} className='flex items-center justify-between gap-2 p-2 rounded bg-[#221a3a] mb-2'>
-                  <div className='flex items-center gap-2'>
-                    <img
-                      src={requestItem.receiverId?.profilePic || assets.avatar_icon}
-                      alt=''
-                      className='w-8 h-8 rounded-full'
-                    />
-                    <div>
-                      <p className='text-sm'>{requestItem.receiverId?.fullName || 'Unknown'}</p>
-                      <p className='text-[11px] text-violet-200/70'>@{requestItem.receiverId?.username || 'user'}</p>
-                    </div>
-                  </div>
-                  <span className='text-xs px-2 py-1 rounded bg-amber-500/30 text-amber-300'>Pending</span>
-                </div>
-              )) : <p className='text-xs text-gray-300'>No outgoing requests.</p>}
-            </div>
-          </div>
+          {pendingRequestCount > 0 && (
+            <button
+              type='button'
+              onClick={() => navigate('/requests')}
+              className='rounded-lg border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-100 transition-all duration-200 hover:bg-violet-500/20'
+            >
+              You have {pendingRequestCount} pending request{pendingRequestCount > 1 ? 's' : ''}. Open Requests from menu.
+            </button>
+          )}
         </>
       )}
 

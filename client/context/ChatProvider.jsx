@@ -3,6 +3,20 @@ import toast from 'react-hot-toast';
 import { AuthContext } from "./AuthContext.jsx";
 import { ChatContext } from "./ChatContext.jsx";
 
+const toIdString = (value) => {
+    if (!value) return "";
+    if (typeof value === "string") return value;
+    if (typeof value === "object" && value._id) return String(value._id);
+    return String(value);
+};
+
+const normalizeMessage = (messageDoc) => ({
+    ...messageDoc,
+    _id: toIdString(messageDoc._id),
+    senderId: toIdString(messageDoc.senderId),
+    receiverId: toIdString(messageDoc.receiverId),
+});
+
 export const ChatProvider = ({ children }) => {
     const [messages, setMessages] = useState([]);
     const [users, setUsers] = useState([]);
@@ -22,6 +36,7 @@ export const ChatProvider = ({ children }) => {
     const applySelectedUserStatus = useCallback((nextStatus) => {
         setSelectedUser((prev) => {
             if (!prev) return prev;
+            if (prev.chatStatus === nextStatus) return prev;
             return { ...prev, chatStatus: nextStatus };
         });
     }, []);
@@ -182,7 +197,7 @@ export const ChatProvider = ({ children }) => {
         try {
             const { data } = await axios.get(`/api/message/${userId}`);
             if (data.success) {
-                setMessages(data.messages);
+                setMessages((data.messages || []).map(normalizeMessage));
                 applySelectedUserStatus('accepted');
                 return { success: true, canChat: true };
             }
@@ -207,7 +222,7 @@ export const ChatProvider = ({ children }) => {
         try {
             const { data } = await axios.post(`/api/message/send/${userId}`, message);
             if (data.success) {
-                setMessages((prevMessages) => [...prevMessages, data.message]);
+                setMessages((prevMessages) => [...prevMessages, normalizeMessage(data.message)]);
                 return true;
             }
             toast.error(data.message);
@@ -221,14 +236,21 @@ export const ChatProvider = ({ children }) => {
     const subscribeToMessages = useCallback(() => {
         if (!socket) return;
         socket.on("newMessage", (message) => {
-            if (selectedUser && message.senderId === selectedUser._id) {
-                message.seen = true;
-                setMessages((prevMessages) => [...prevMessages, message]);
-                axios.put(`/api/message/mark/${message._id}`);
+            const normalizedMessage = normalizeMessage(message);
+            const senderId = normalizedMessage.senderId;
+            const activeUserId = toIdString(selectedUser?._id);
+
+            if (selectedUser && senderId === activeUserId) {
+                normalizedMessage.seen = true;
+                setMessages((prevMessages) => [...prevMessages, normalizedMessage]);
+
+                if (normalizedMessage._id) {
+                    axios.put(`/api/message/mark/${normalizedMessage._id}`);
+                }
             } else {
                 setUnseenMessages((prevUnseenMessages) => ({
                     ...prevUnseenMessages,
-                    [message.senderId]: prevUnseenMessages[message.senderId] ? prevUnseenMessages[message.senderId] + 1 : 1,
+                    [senderId]: prevUnseenMessages[senderId] ? prevUnseenMessages[senderId] + 1 : 1,
                 }));
             }
         });
