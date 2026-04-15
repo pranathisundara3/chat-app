@@ -13,6 +13,13 @@ export const hasPreviousMessages = async (userA, userB) => {
     return Boolean(existingMessage);
 };
 
+export const getLatestRelationship = async (userA, userB) => {
+    return ChatRequest.findOne(pairFilter(userA, userB))
+        .sort({ updatedAt: -1 })
+        .select("status")
+        .lean();
+};
+
 export const hasAcceptedRequest = async (userA, userB) => {
     const acceptedRequest = await ChatRequest.findOne({
         ...pairFilter(userA, userB),
@@ -36,17 +43,16 @@ export const hasRemovedConnection = async (userA, userB) => {
 };
 
 export const canUsersChat = async (userA, userB) => {
-    const [acceptedRequestExists, removedConnectionExists] = await Promise.all([
-        hasAcceptedRequest(userA, userB),
-        hasRemovedConnection(userA, userB),
-    ]);
+    const latestRelationship = await getLatestRelationship(userA, userB);
 
-    if (removedConnectionExists) {
-        return false;
-    }
+    if (latestRelationship) {
+        if (latestRelationship.status === "accepted") {
+            return true;
+        }
 
-    if (acceptedRequestExists) {
-        return true;
+        if (["pending", "rejected", "removed"].includes(latestRelationship.status)) {
+            return false;
+        }
     }
 
     const chatHistoryExists = await hasPreviousMessages(userA, userB);

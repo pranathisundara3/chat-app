@@ -1,6 +1,5 @@
 import Message from "../models/message.js";
 import User from "../models/user.js";
-import ChatRequest from "../models/chatRequest.js";
 import cloudinary from "../lib/cloudinary.js";
 import { io, userSocketMap } from "../server.js";
 import { canUsersChat } from "../lib/chatAccess.js";
@@ -36,25 +35,16 @@ export const getChatUsers = async (req, res) => {
             return res.json({ success: true, users: [], unseenMessages: {} });
         }
 
-        const removedRows = await ChatRequest.find({
-            status: "removed",
-            $or: [
-                { senderId: userId, receiverId: { $in: uniqueUserIds } },
-                { receiverId: userId, senderId: { $in: uniqueUserIds } },
-            ],
-        })
-            .select("senderId receiverId")
-            .lean();
+        const visibilityRows = await Promise.all(
+            uniqueUserIds.map(async (otherUserId) => ({
+                otherUserId,
+                canChat: await canUsersChat(userId, otherUserId),
+            }))
+        );
 
-        const removedUserIds = new Set();
-        removedRows.forEach((requestDoc) => {
-            const senderId = requestDoc.senderId.toString();
-            const receiverId = requestDoc.receiverId.toString();
-            const otherUserId = senderId === userIdString ? receiverId : senderId;
-            removedUserIds.add(otherUserId);
-        });
-
-        const visibleUserIds = uniqueUserIds.filter((id) => !removedUserIds.has(id));
+        const visibleUserIds = visibilityRows
+            .filter((row) => row.canChat)
+            .map((row) => row.otherUserId);
 
         if (!visibleUserIds.length) {
             return res.json({ success: true, users: [], unseenMessages: {} });
@@ -178,5 +168,47 @@ export const sendMessage = async (req, res) => {
     } catch (error) {
         console.log(error.message);
         res.json({ success: false, message: error.message });
+    }
+};
+
+// delete a message sent by the current user
+export const deleteMessage = async (req, res) => {
+    try {
+        const { id: messageId } = req.params;
+        const currentUserId = req.user._id.toString();
+
+        const message = await Message.findById(messageId);
+        if (!message) {
+            return res.json({ success: false, message: "Message not found" });
+        }
+
+        const senderId = message.senderId.toString();
+        const receiverId = message.receiverId.toString();
+
+        if (senderId !== currentUserId) {
+            return res.status(403).json({
+                success: false,
+                message: "You can only delete your own messages",
+            });
+        }
+
+        await Message.findByIdAndDelete(messageId);
+
+        const senderSocketId = userSocketMap[senderId];
+        const receiverSocketId = userSocketMap[receiverId];
+        const payload = { messageId };
+
+        if (senderSocketId) {
+            io.to(senderSocketId).emit("messageDeleted", payload);
+        }
+
+        if (receiverSocketId) {
+            io.to(receiverSocketId).emit("messageDeleted", payload);
+        }
+
+        return res.json({ success: true, message: "Message deleted", messageId });
+    } catch (error) {
+        console.log(error.message);
+        return res.json({ success: false, message: error.message });
     }
 };

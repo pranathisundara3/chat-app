@@ -276,6 +276,24 @@ export const ChatProvider = ({ children }) => {
         }
     }, [axios]);
 
+    const deleteMessage = useCallback(async (messageId) => {
+        try {
+            const { data } = await axios.delete(`/api/message/${messageId}`);
+            if (!data.success) {
+                toast.error(data.message);
+                return false;
+            }
+
+            const deletedId = toIdString(data.messageId || messageId);
+            setMessages((prevMessages) => prevMessages.filter((messageDoc) => messageDoc._id !== deletedId));
+            toast.success('Message deleted');
+            return true;
+        } catch (error) {
+            toast.error(error.message);
+            return false;
+        }
+    }, [axios]);
+
     const subscribeToMessages = useCallback(() => {
         if (!socket) return;
         socket.on("newMessage", (message) => {
@@ -297,12 +315,20 @@ export const ChatProvider = ({ children }) => {
                 }));
             }
         });
+
+        socket.on("messageDeleted", ({ messageId }) => {
+            const deletedId = toIdString(messageId);
+            if (!deletedId) return;
+            setMessages((prevMessages) => prevMessages.filter((messageDoc) => messageDoc._id !== deletedId));
+        });
     }, [socket, selectedUser, axios]);
     
     // function to unsubscribe from messages 
     const unsubscribeFromMessages = useCallback(() => {
         if (socket) 
             socket.off("newMessage");
+        if (socket)
+            socket.off("messageDeleted");
     }, [socket]);
     
     useEffect(() => {
@@ -338,6 +364,7 @@ export const ChatProvider = ({ children }) => {
         getUsers,
         getMessages,
         sendMessage,
+        deleteMessage,
         subscribeToMessages,
     };
 

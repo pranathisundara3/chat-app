@@ -25,10 +25,12 @@ const Sidebar = () => {
 
   const [input, setInput] = useState("");
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [dismissedRequestCount, setDismissedRequestCount] = useState(0);
   const menuRef = useRef(null);
 
   const navigate = useNavigate();
   const pendingRequestCount = incomingRequests.length;
+  const showRequestsDialog = pendingRequestCount > 0 && pendingRequestCount !== dismissedRequestCount;
 
   const filteredHistoryUsers = useMemo(() => {
     const trimmed = input.trim().toLowerCase();
@@ -139,7 +141,38 @@ const Sidebar = () => {
   };
 
   return (
-    <div className={`bg-[#8185B2]/10 h-full p-5 rounded-r-xl overflow-y-scroll text-white ${selectedUser ? 'max-md:hidden' : ''}`}>
+    <>
+      {showRequestsDialog && pendingRequestCount > 0 && (
+        <div className='fixed inset-0 z-40 flex items-center justify-center bg-black/50 px-4 backdrop-blur-sm'>
+          <div className='w-full max-w-sm rounded-2xl border border-violet-400/35 bg-[#140f29] p-5 text-white shadow-[0_22px_60px_rgba(0,0,0,0.55)]'>
+            <h3 className='text-lg font-semibold text-violet-100'>You have pending requests</h3>
+            <p className='mt-2 text-sm text-violet-200/80'>
+              You received {pendingRequestCount} request{pendingRequestCount > 1 ? 's' : ''}. Open Requests to accept or reject.
+            </p>
+            <div className='mt-5 flex items-center justify-end gap-2'>
+              <button
+                type='button'
+                onClick={() => setDismissedRequestCount(pendingRequestCount)}
+                className='rounded-md border border-violet-300/35 px-3 py-1.5 text-sm text-violet-100 transition-colors duration-200 hover:bg-violet-500/20'
+              >
+                Not now
+              </button>
+              <button
+                type='button'
+                onClick={() => {
+                  setDismissedRequestCount(pendingRequestCount);
+                  navigate('/requests');
+                }}
+                className='rounded-md bg-violet-500 px-3 py-1.5 text-sm font-medium text-white transition-colors duration-200 hover:bg-violet-400'
+              >
+                Open Requests
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      <div className={`bg-[#8185B2]/10 h-full p-5 rounded-r-xl overflow-y-scroll text-white ${selectedUser ? 'max-md:hidden' : ''}`}>
       <div className='pb-5'>
         <div className='flex justify-between items-center'>
           <img src={assets.logo} alt="logo" className='max-w-40' />
@@ -271,23 +304,10 @@ const Sidebar = () => {
             )}
           </div>
 
-          {pendingRequestCount > 0 && (
-            <button
-              type='button'
-              onClick={() => navigate('/requests')}
-              className='rounded-lg border border-violet-400/30 bg-violet-500/10 px-3 py-2 text-xs text-violet-100 transition-all duration-200 hover:bg-violet-500/20'
-            >
-              You have {pendingRequestCount} pending request{pendingRequestCount > 1 ? 's' : ''}. Open Requests from menu.
-            </button>
-          )}
         </>
       )}
-
-      <div className='h-2' />
-      {onlineUsers.length > 0 && (
-        <p className='text-[11px] text-violet-200/70'>Online users: {onlineUsers.length}</p>
-      )}
-    </div>
+      </div>
+    </>
   );
 };
 

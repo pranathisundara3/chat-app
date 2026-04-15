@@ -19,6 +19,7 @@ const Chatcontainer = () => {
     selectedUser,
     setSelectedUser,
     sendMessage,
+    deleteMessage,
     getMessages,
     sendChatRequest,
     acceptRequest,
@@ -31,6 +32,8 @@ const Chatcontainer = () => {
 
   const scrollEnd = useRef();
   const [input, setInput] = useState('');
+  const [activeMessageMenuId, setActiveMessageMenuId] = useState('');
+  const [deletingMessageId, setDeletingMessageId] = useState('');
   const canChat = selectedUser?.chatStatus === 'accepted';
   const authUserId = toIdString(authUser?._id);
   const selectedUserId = selectedUser?._id;
@@ -67,6 +70,22 @@ const Chatcontainer = () => {
     reader.readAsDataURL(file);
   };
 
+  const handleDeleteMessage = async (messageId) => {
+    if (!messageId) return;
+
+    const confirmed = window.confirm('Delete this message?');
+    if (!confirmed) return;
+
+    setDeletingMessageId(messageId);
+    const deleted = await deleteMessage(messageId);
+
+    if (deleted) {
+      setActiveMessageMenuId('');
+    }
+
+    setDeletingMessageId('');
+  };
+
   useEffect(() => {
     if (!selectedUserId || selectedUserStatus !== 'accepted') {
       return;
@@ -78,7 +97,6 @@ const Chatcontainer = () => {
 
     loadMessages();
   }, [selectedUserId, selectedUserStatus, getMessages]);
-
 
   useEffect(() => {
     if(scrollEnd.current && messages){
@@ -183,6 +201,9 @@ const Chatcontainer = () => {
           const senderId = toIdString(message.senderId);
           const isMyMessage = senderId === authUserId;
           const messageKey = message._id || `${message.createdAt || 'msg'}-${index}`;
+          const messageId = toIdString(message._id);
+          const menuOpen = activeMessageMenuId === messageId;
+          const isDeletingThisMessage = deletingMessageId === messageId;
 
           return (
             <div key={messageKey} className={`mb-4 flex items-end gap-2 ${isMyMessage ? 'justify-end' : 'justify-start'}`}>
@@ -193,13 +214,39 @@ const Chatcontainer = () => {
                 </div>
               )}
 
-              {message.image ? (
-                <img src={message.image} alt="" className='max-w-[230px] border border-gray-700 rounded-lg overflow-hidden' />
-              ) : (
-                <p className={`p-2 max-w-[240px] md:text-sm font-light rounded-lg break-words ${isMyMessage ? 'bg-violet-500/30 text-white rounded-br-none' : 'bg-white/20 text-white rounded-bl-none'}`}>
-                  {message.text}
-                </p>
-              )}
+              <div className='relative'>
+                {message.image ? (
+                  <img src={message.image} alt="" className='max-w-[230px] border border-gray-700 rounded-lg overflow-hidden' />
+                ) : (
+                  <p className={`p-2 max-w-[240px] md:text-sm font-light rounded-lg break-words ${isMyMessage ? 'bg-violet-500/30 text-white rounded-br-none' : 'bg-white/20 text-white rounded-bl-none'}`}>
+                    {message.text}
+                  </p>
+                )}
+
+                {isMyMessage && messageId && (
+                  <button
+                    type='button'
+                    onClick={() => setActiveMessageMenuId(menuOpen ? '' : messageId)}
+                    className='absolute -left-9 top-1 rounded-md border border-violet-300/40 bg-black/50 px-2 py-0.5 text-xs text-violet-100 hover:bg-black/70'
+                    aria-label='Message options'
+                  >
+                    ...
+                  </button>
+                )}
+
+                {isMyMessage && messageId && menuOpen && (
+                  <div className='absolute right-0 top-full z-20 mt-1 min-w-32 rounded-md border border-violet-400/35 bg-black/90 p-1 shadow-lg'>
+                    <button
+                      type='button'
+                      onClick={() => handleDeleteMessage(messageId)}
+                      disabled={isDeletingThisMessage}
+                      className='w-full rounded px-2 py-1 text-left text-xs text-red-300 hover:bg-red-500/20 disabled:opacity-60'
+                    >
+                      {isDeletingThisMessage ? 'Deleting...' : 'Delete message'}
+                    </button>
+                  </div>
+                )}
+              </div>
 
               {isMyMessage && (
                 <div className="text-center text-xs text-gray-400">
