@@ -4,6 +4,13 @@ import { canUsersChat } from "../lib/chatAccess.js";
 
 const requestUserFields = "fullName username profilePic bio";
 
+const pairFilter = (userA, userB) => ({
+    $or: [
+        { senderId: userA, receiverId: userB },
+        { senderId: userB, receiverId: userA },
+    ],
+});
+
 // send chat request from current user to target user
 export const sendRequest = async (req, res) => {
     try {
@@ -164,6 +171,45 @@ export const rejectRequest = async (req, res) => {
         await requestDoc.save();
 
         return res.json({ success: true, message: "Request rejected" });
+    } catch (error) {
+        console.log(error.message);
+        return res.json({ success: false, message: error.message });
+    }
+};
+
+// remove an accepted connection without deleting user accounts
+export const removeConnection = async (req, res) => {
+    try {
+        const currentUserId = req.user._id;
+        const targetUserId = req.params.id;
+
+        if (!targetUserId) {
+            return res.json({ success: false, message: "Target user id is required" });
+        }
+
+        if (currentUserId.toString() === targetUserId.toString()) {
+            return res.json({ success: false, message: "You cannot remove yourself" });
+        }
+
+        const targetUser = await User.findById(targetUserId).select("_id");
+        if (!targetUser) {
+            return res.json({ success: false, message: "User not found" });
+        }
+
+        const existingRequest = await ChatRequest.findOne(pairFilter(currentUserId, targetUserId)).sort({ updatedAt: -1 });
+
+        if (existingRequest) {
+            existingRequest.status = "removed";
+            await existingRequest.save();
+        } else {
+            await ChatRequest.create({
+                senderId: currentUserId,
+                receiverId: targetUserId,
+                status: "removed",
+            });
+        }
+
+        return res.json({ success: true, message: "Connection removed successfully" });
     } catch (error) {
         console.log(error.message);
         return res.json({ success: false, message: error.message });

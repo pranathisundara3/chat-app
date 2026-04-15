@@ -1,5 +1,6 @@
 import Message from "../models/message.js";
 import User from "../models/user.js";
+import ChatRequest from "../models/chatRequest.js";
 import cloudinary from "../lib/cloudinary.js";
 import { io, userSocketMap } from "../server.js";
 import { canUsersChat } from "../lib/chatAccess.js";
@@ -35,18 +36,42 @@ export const getChatUsers = async (req, res) => {
             return res.json({ success: true, users: [], unseenMessages: {} });
         }
 
-        const users = await User.find({ _id: { $in: uniqueUserIds } })
+        const removedRows = await ChatRequest.find({
+            status: "removed",
+            $or: [
+                { senderId: userId, receiverId: { $in: uniqueUserIds } },
+                { receiverId: userId, senderId: { $in: uniqueUserIds } },
+            ],
+        })
+            .select("senderId receiverId")
+            .lean();
+
+        const removedUserIds = new Set();
+        removedRows.forEach((requestDoc) => {
+            const senderId = requestDoc.senderId.toString();
+            const receiverId = requestDoc.receiverId.toString();
+            const otherUserId = senderId === userIdString ? receiverId : senderId;
+            removedUserIds.add(otherUserId);
+        });
+
+        const visibleUserIds = uniqueUserIds.filter((id) => !removedUserIds.has(id));
+
+        if (!visibleUserIds.length) {
+            return res.json({ success: true, users: [], unseenMessages: {} });
+        }
+
+        const users = await User.find({ _id: { $in: visibleUserIds } })
             .select("-password")
             .lean();
 
         const usersMap = new Map(users.map((user) => [user._id.toString(), user]));
-        const orderedUsers = uniqueUserIds
+        const orderedUsers = visibleUserIds
             .map((id) => usersMap.get(id))
             .filter(Boolean);
 
         const unseenMessages = {};
         const unseenMessageRows = await Message.find({
-            senderId: { $in: uniqueUserIds },
+            senderId: { $in: visibleUserIds },
             receiverId: userId,
             seen: false,
         })

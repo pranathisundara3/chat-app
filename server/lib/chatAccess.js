@@ -24,11 +24,31 @@ export const hasAcceptedRequest = async (userA, userB) => {
     return Boolean(acceptedRequest);
 };
 
+export const hasRemovedConnection = async (userA, userB) => {
+    const removedConnection = await ChatRequest.findOne({
+        ...pairFilter(userA, userB),
+        status: "removed",
+    })
+        .select("_id")
+        .lean();
+
+    return Boolean(removedConnection);
+};
+
 export const canUsersChat = async (userA, userB) => {
-    const [chatHistoryExists, acceptedRequestExists] = await Promise.all([
-        hasPreviousMessages(userA, userB),
+    const [acceptedRequestExists, removedConnectionExists] = await Promise.all([
         hasAcceptedRequest(userA, userB),
+        hasRemovedConnection(userA, userB),
     ]);
 
-    return chatHistoryExists || acceptedRequestExists;
+    if (removedConnectionExists) {
+        return false;
+    }
+
+    if (acceptedRequestExists) {
+        return true;
+    }
+
+    const chatHistoryExists = await hasPreviousMessages(userA, userB);
+    return chatHistoryExists;
 };

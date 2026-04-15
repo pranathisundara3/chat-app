@@ -166,7 +166,8 @@ export const searchUser = async (req, res) => {
                     { receiverId: loggedInUserId, senderId: { $in: matchedUserIds } },
                 ],
             })
-                .select("senderId receiverId status")
+                .sort({ updatedAt: -1 })
+                .select("_id senderId receiverId status updatedAt")
                 .lean(),
             Message.find({
                 $or: [
@@ -185,7 +186,11 @@ export const searchUser = async (req, res) => {
             const senderId = requestDoc.senderId.toString();
             const receiverId = requestDoc.receiverId.toString();
             const otherUserId = senderId === loggedInUserIdStr ? receiverId : senderId;
-            requestByOtherUser.set(otherUserId, requestDoc);
+
+            // requestDocs are sorted by updatedAt descending, keep latest relation per user.
+            if (!requestByOtherUser.has(otherUserId)) {
+                requestByOtherUser.set(otherUserId, requestDoc);
+            }
         });
 
         const userIdsWithChatHistory = new Set();
@@ -198,26 +203,27 @@ export const searchUser = async (req, res) => {
 
         const users = matchedUsers.map((user) => {
             const userId = user._id.toString();
-
-            if (userIdsWithChatHistory.has(userId)) {
-                return { ...user, chatStatus: "accepted" };
-            }
-
             const requestDoc = requestByOtherUser.get(userId);
-            if (!requestDoc) {
+
+            // removed connection must behave as disconnected even when old messages exist.
+            if (requestDoc?.status === "removed") {
                 return { ...user, chatStatus: "none" };
             }
 
-            if (requestDoc.status === "accepted") {
+            if (requestDoc?.status === "accepted") {
                 return { ...user, chatStatus: "accepted", requestId: requestDoc._id };
             }
 
-            if (requestDoc.status === "pending") {
+            if (requestDoc?.status === "pending") {
                 const chatStatus = requestDoc.senderId.toString() === loggedInUserIdStr
                     ? "pending-sent"
                     : "pending-received";
 
                 return { ...user, chatStatus, requestId: requestDoc._id };
+            }
+
+            if (userIdsWithChatHistory.has(userId)) {
+                return { ...user, chatStatus: "accepted" };
             }
 
             return { ...user, chatStatus: "none" };

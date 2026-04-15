@@ -184,6 +184,49 @@ export const ChatProvider = ({ children }) => {
         }
     }, [axios, getUsers]);
 
+    const removeConnection = useCallback(async (userId) => {
+        const targetUserId = toIdString(userId);
+        setRequestActionLoading(true);
+
+        try {
+            const { data } = await axios.delete(`/api/chat-request/remove/${targetUserId}`);
+
+            if (!data.success) {
+                toast.error(data.message);
+                return false;
+            }
+
+            await Promise.all([getUsers(), getRequests()]);
+
+            setSearchResults((prevResults) => prevResults.map((user) => {
+                if (toIdString(user._id) !== targetUserId) return user;
+
+                const nextUser = { ...user, chatStatus: 'none' };
+                delete nextUser.requestId;
+                return nextUser;
+            }));
+
+            if (toIdString(selectedUser?._id) === targetUserId) {
+                setSelectedUser(null);
+                setMessages([]);
+            }
+
+            setUnseenMessages((prevUnseen) => {
+                const nextUnseen = { ...prevUnseen };
+                delete nextUnseen[targetUserId];
+                return nextUnseen;
+            });
+
+            toast.success(data.message);
+            return true;
+        } catch (error) {
+            toast.error(error.message);
+            return false;
+        } finally {
+            setRequestActionLoading(false);
+        }
+    }, [axios, getUsers, getRequests, selectedUser]);
+
     const selectChatUser = useCallback((user) => {
         const chatStatus = user.chatStatus || 'accepted';
         setSelectedUser({ ...user, chatStatus });
@@ -284,6 +327,7 @@ export const ChatProvider = ({ children }) => {
         sendChatRequest,
         acceptRequest,
         rejectRequest,
+        removeConnection,
         requestActionLoading,
         messagesLoading,
         selectedUser,
